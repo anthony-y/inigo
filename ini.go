@@ -10,8 +10,6 @@ import (
 type File map[string]Section
 type Section map[string]interface{}
 
-//type Key string
-
 func (f File) Section(name string) Section {
 	return f[name]
 }
