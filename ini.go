@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"os"
 
-	"inigo/parsing"
+	"github.com/anthony-y/inigo/parsing"
 )
 
 type File map[string]Section

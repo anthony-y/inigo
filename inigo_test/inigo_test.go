@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"inigo"
+	"github.com/anthony-y/inigo"
 )
 
 type test struct {

@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"inigo"
+	"github.com/anthony-y/inigo"
 )
 
 func main() {
