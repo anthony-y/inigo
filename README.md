@@ -9,7 +9,7 @@ Read INI files in Go
 If you're using Go modules, just import IniGo
 
 ```golang
-import "github/anthony-y/inigo"
+import "github.com/anthony-y/inigo"
 ```
 
 and it will be built when you run
@@ -21,7 +21,7 @@ go build
 If your code is in $GOPATH/src, then you'll need to first run
 
 ```
-go get "github/anthony-y/inigo"
+go get "github.com/anthony-y/inigo"
 ```
 
 ## Getting started
@@ -45,7 +45,7 @@ package main
 import (
     "fmt"
 
-    "github/anthony-y/inigo"
+    "github.com/anthony-y/inigo"
 )
 
 func main() {
