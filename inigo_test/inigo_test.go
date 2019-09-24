@@ -25,7 +25,7 @@ var ini inigo.File
 
 func TestLoad(t *testing.T) {
 	var errs []error
-	ini, errs = inigo.LoadIni("../testdata/test.ini")
+	ini, errs = inigo.LoadIniFile("../testdata/test.ini")
 	if errs != nil {
 		for _, e := range errs {
 			fmt.Println(e)
@@ -50,7 +50,6 @@ func TestFields(t *testing.T) {
 	}
 
 	local := ini[tests[2].section][tests[2].key].(int)
-	//panic(local)
 	if local != tests[2].value.(int) {
 		t.Fail()
 	}

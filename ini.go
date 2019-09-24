@@ -2,6 +2,8 @@ package inigo
 
 import (
 	"bufio"
+	"bytes"
+	"io"
 	"os"
 
 	"github.com/anthony-y/inigo/parsing"
@@ -18,18 +20,26 @@ func (s Section) Key(name string) interface{} {
 	return s[name]
 }
 
-func LoadIni(path string) (File, []error) {
-	ini := File{}
-
+func LoadIniFile(path string) (File, []error) {
 	handle, err := os.Open(path)
 	if err != nil {
-		return ini, []error{
+		return nil, []error{
 			err,
 		}
 	}
 	defer handle.Close()
 
-	lineReader := bufio.NewScanner(handle)
+	return LoadIni(handle)
+}
+
+func LoadIniFromBytes(b []byte) (File, []error) {
+	return LoadIni(bytes.NewReader(b))
+}
+
+func LoadIni(reader io.Reader) (File, []error) {
+	ini := File{}
+
+	lineReader := bufio.NewScanner(reader)
 	lineNum := 0
 
 	expressions := []parsing.Expression{}
