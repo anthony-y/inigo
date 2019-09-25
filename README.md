@@ -49,7 +49,7 @@ import (
 )
 
 func main() {
-    ini, errs := inigo.LoadIni("example.ini")
+    ini, errs := inigo.LoadIniFile("example.ini")
 	if errs != nil {
 		for _, err := range errs {
 			fmt.Println(err)
