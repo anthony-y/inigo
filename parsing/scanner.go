@@ -10,9 +10,10 @@ type (
 
 	// Token represents a lexical token
 	Token struct {
+		// See bottom of file
 		Type TokenType
-		Text string
 
+		Text    string
 		LineNum int
 	}
 )
@@ -27,6 +28,124 @@ var (
 		'\n': LineBreak,
 	}
 )
+
+// Scan splits a rune alice of ini into a slice of tokens
+func Scan(input []rune) ([]Token, []error) {
+	// Output slice
+	out := []Token{}
+	errors := []error{}
+
+	// Index of current rune in input slice
+	pos := 0
+	line := 1
+
+	// For every character in the input
+	for {
+		// Exit condition
+		if pos >= len(input)-1 {
+			break
+		}
+
+		// Skip whitespace
+		for input[pos] == ' ' || input[pos] == '\t' {
+			pos++
+		}
+
+		// New token to be appended to the output slice at the end of the loop
+		token := Token{}
+		token.LineNum = line
+
+		// Check for all single character tokens
+		// If current character is in the smybols map...
+		if _, ok := symbols[input[pos]]; ok {
+			text := string(input[pos])
+			if input[pos] == '\n' {
+				text = "\\n"
+			}
+
+			// ...create a token from it
+			token.Type = symbols[input[pos]]
+			token.Text = text
+
+		} else if unicode.IsLetter(input[pos]) || input[pos] == '_' { // Identifiers
+			startPos := pos
+			for unicode.IsLetter(input[pos+1]) || unicode.IsNumber(input[pos+1]) || input[pos+1] == '_' || input[pos+1] == ' ' {
+				if input[pos] == '\n' {
+					errors = append(errors, IniError{
+						"Unexpected line-break in identifier",
+						line,
+					})
+				}
+
+				pos++
+			}
+
+			token.Type = Identifier
+			token.Text = string(input[startPos : pos+1])
+
+		} else if unicode.IsNumber(input[pos]) || input[pos] == '-' { // Numbers
+			startPos := pos
+			numType := NumberLiteral
+
+			for unicode.IsNumber(input[pos]) || input[pos] == '.' {
+				if input[pos] == '\n' {
+					errors = append(errors, IniError{
+						"Unexpected line-break in number",
+						line,
+					})
+				}
+
+				if input[pos] == '.' {
+					numType = FloatLiteral
+				}
+
+				pos++
+			}
+
+			token.Type = numType
+			token.Text = string(input[startPos : pos+1])
+
+		} else if input[pos] == '"' { // Strings
+			pos++
+
+			startPos := pos
+			for input[pos] != '"' {
+				if input[pos] == '\n' {
+					errors = append(errors, IniError{
+						"Unterminated string",
+						line,
+					})
+				}
+
+				pos++
+			}
+
+			token.Type = StringLiteral
+			token.Text = string(input[startPos:pos])
+
+		} else if input[pos] == '#' || input[pos] == ';' { // Comments
+			for input[pos+1] != '\n' {
+				pos++
+			}
+
+			token.Type = Comment
+			token.Text = ""
+
+		} else {
+			token.Type = Unknown
+			token.Text = string(input[pos])
+		}
+
+		out = append(out, token)
+		pos++
+	}
+
+	if len(errors) > 0 {
+		return out, errors
+	}
+
+	return out, nil
+}
 
 // TokenType "enum"
 const (
@@ -45,98 +164,3 @@ const (
 
 	Unknown
 )
-
-// ScanLine splits a single line of ini into a slice of tokens
-func ScanLine(line []rune, num int) []Token {
-	// Output slice
-	out := []Token{}
-
-	// Index of current rune in input slice
-	pos := 0
-
-	// For every character in the line
-	for {
-		// Exit condition
-		if pos >= len(line) {
-			break
-		}
-
-		// Skip whitespace
-		for line[pos] == ' ' || line[pos] == '\t' {
-			pos++
-		}
-
-		// New token to be appended to the output slice at the end of the loop
-		token := Token{}
-		token.LineNum = num
-
-		// Check for all single character tokens
-		// If current character is in the smybols map...
-		if _, ok := symbols[line[pos]]; ok {
-			text := string(line[pos])
-			if line[pos] == '\n' {
-				text = "\\n"
-			}
-
-			// ...create a token from it
-			token.Type = symbols[line[pos]]
-			token.Text = text
-
-		} else if unicode.IsLetter(line[pos]) || line[pos] == '_' { // Identifiers
-			startPos := pos
-			for unicode.IsLetter(line[pos+1]) || unicode.IsNumber(line[pos+1]) || line[pos+1] == '_' || line[pos+1] == ' ' {
-				pos++
-			}
-
-			token.Type = Identifier
-			token.Text = string(line[startPos : pos+1])
-
-		} else if unicode.IsNumber(line[pos]) || line[pos] == '-' { // Numbers
-			startPos := pos
-			numType := NumberLiteral
-
-			for unicode.IsNumber(line[pos+1]) || line[pos+1] == '.' {
-				if line[pos+1] == '.' {
-					numType = FloatLiteral
-				}
-
-				pos++
-			}
-
-			token.Type = numType
-			token.Text = string(line[startPos : pos+1])
-
-		} else if line[pos] == '"' { // Strings
-			pos++
-
-			startPos := pos
-			for line[pos] != '"' {
-				if line[pos] == '\n' {
-					panic("Unterminated string")
-				}
-
-				pos++
-			}
-
-			token.Type = StringLiteral
-			token.Text = string(line[startPos:pos])
-
-		} else if line[pos] == '#' || line[pos] == ';' { // Comments
-			for line[pos+1] != '\n' {
-				pos++
-			}
-
-			token.Type = Comment
-			token.Text = ""
-
-		} else {
-			token.Type = Unknown
-			token.Text = string(line[pos])
-		}
-
-		out = append(out, token)
-		pos++
-	}
-
-	return out
-}

@@ -25,22 +25,19 @@ type (
 	iniParser struct {
 		tokens   []Token
 		tokenPos int
+		line     int
 
-		line int
-
-		//currentSection string
+		currentSection string
 	}
 
-	// ParseError represents an error that occurrs during INI parsing
-	ParseError struct {
+	// IniError represents an error that occurrs during INI parsing
+	IniError struct {
 		Message string
 		Line    int
 	}
 )
 
-var currentSection = ""
-
-func (pe ParseError) Error() string {
+func (pe IniError) Error() string {
 	return fmt.Sprintf("INIGO: %s (line %d)", pe.Message, pe.Line)
 }
 
@@ -61,34 +58,58 @@ func (i *iniParser) current() Token {
 }
 
 func (i *iniParser) peek() Token {
+	if i.tokenPos+1 > len(i.tokens)-1 {
+		return i.tokens[i.tokenPos]
+	}
+
 	return i.tokens[i.tokenPos+1]
 }
 
-func (i *iniParser) makeError(message string) ParseError {
-	return ParseError{
+func (i *iniParser) makeError(message string) IniError {
+	return IniError{
 		Message: message,
 		Line:    i.line,
 	}
 }
 
-// ParseLine parses a line of ini into an expression
-func ParseLine(tokens []Token) (Expression, error) {
-	parser := &iniParser{
-		tokens:   tokens,
-		tokenPos: 0,
-		line:     tokens[0].LineNum,
+// Parse parses INI tokens into expressions
+func Parse(tokens []Token) ([]Expression, []error) {
+	parser := &iniParser{}
+	parser.currentSection = ""
+
+	output := []Expression{}
+	errors := []error{}
+
+	input := splitTokensIntoLines(tokens)
+
+	for i, line := range input {
+		parser.tokenPos = 0
+		parser.line = i
+		parser.tokens = line
+
+		e, err := program(parser)
+		if err != nil {
+			errors = append(errors, err)
+		}
+
+		output = append(output, e)
 	}
 
-	e, err := program(parser)
-	if err != nil {
-		return nil, err
+	if len(errors) > 0 {
+		return nil, errors
 	}
 
-	return e, nil
+	return output, nil
 }
 
 func program(i *iniParser) (Expression, error) {
 	tok := i.current()
+
+	// Skip empty lines
+	// (if previous() and peek() both return the same thing, there must only be 1 token)
+	// if i.previous().Type == tok.Type || i.peek().Type == tok.Type {
+	// 	return nil, nil
+	// }
 
 	if tok.Type == OpenBrace {
 		return section(i)
@@ -99,6 +120,7 @@ func program(i *iniParser) (Expression, error) {
 	}
 
 	if tok.Type == LineBreak {
+		i.line++
 		return nil, nil
 	}
 
@@ -137,7 +159,7 @@ func section(i *iniParser) (Expression, error) {
 
 	ident, ok := expr.(identifierExpression)
 	if !ok {
-		return nil, ParseError{
+		return nil, IniError{
 			Message: "Expected identifier on section header",
 			Line:    i.line,
 		}
@@ -147,7 +169,7 @@ func section(i *iniParser) (Expression, error) {
 		return nil, i.makeError("Expected close brace in section declaration")
 	}
 
-	currentSection = ident.text
+	i.currentSection = ident.text
 	return SectionExpression{
 		Name: ident.text,
 	}, nil
@@ -175,7 +197,7 @@ func assignment(i *iniParser) (Expression, error) {
 		return AssignmentExpression{
 			Name:    name,
 			Value_:  value,
-			Section: currentSection,
+			Section: i.currentSection,
 		}, nil
 	}
 
@@ -239,4 +261,29 @@ func floatLiteral(i *iniParser) (Expression, error) {
 		number: float,
 		asText: i.previous().Text,
 	}, nil
+}
+
+func splitTokensIntoLines(s []Token) [][]Token {
+	out := [][]Token{}
+	poss := []int{}
+
+	// Get indexes of new lines
+	for i, t := range s {
+		if t.Type == LineBreak {
+			poss = append(poss, i)
+		}
+	}
+
+	// Loop through indexes and make a slice from the last position to the new one
+	lastPos := 0
+	for _, pos := range poss {
+		if lastPos > 0 {
+			out = append(out, s[lastPos+1:pos])
+		} else {
+			out = append(out, s[lastPos:pos])
+		}
+		lastPos = pos
+	}
+
+	return out
 }

@@ -1,16 +1,27 @@
 package inigo
 
 import (
-	"bufio"
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 
 	"github.com/anthony-y/inigo/parsing"
 )
 
-type File map[string]Section
-type Section map[string]interface{}
+type (
+	File    map[string]Section
+	Section map[string]interface{}
+
+	ReadError struct {
+		Name string
+		Err  error
+	}
+)
+
+func (re ReadError) Error() string {
+	return fmt.Sprintf("Failed to read %s: %s", re.Name, re.Err.Error())
+}
 
 func (f File) Section(name string) Section {
 	return f[name]
@@ -20,16 +31,18 @@ func (s Section) Key(name string) interface{} {
 	return s[name]
 }
 
-func LoadIniFile(path string) (File, []error) {
+func LoadIniFile(path string) (f File, e []error) {
 	handle, err := os.Open(path)
 	if err != nil {
 		return nil, []error{
 			err,
 		}
 	}
-	defer handle.Close()
 
-	return LoadIni(handle)
+	f, e = LoadIni(handle)
+	handle.Close()
+
+	return
 }
 
 func LoadIniFromBytes(b []byte) (File, []error) {
@@ -38,38 +51,32 @@ func LoadIniFromBytes(b []byte) (File, []error) {
 
 func LoadIni(reader io.Reader) (File, []error) {
 	ini := File{}
+	errors := []error{}
 
-	lineReader := bufio.NewScanner(reader)
-	lineNum := 0
+	buf := bytes.Buffer{}
+	_, err := buf.ReadFrom(reader)
 
-	expressions := []parsing.Expression{}
-	var errors []error
-
-	for lineReader.Scan() {
-		lineNum++
-		line := []rune(lineReader.Text() + "\n")
-
-		// Ignore blank lines
-		tokens := parsing.ScanLine(line, lineNum)
-		if len(tokens) == 1 && tokens[0].Type == parsing.LineBreak {
-			continue
+	if err != nil {
+		return nil, []error{
+			ReadError{
+				Name: "io.Reader",
+				Err:  err,
+			},
 		}
-
-		// Parse
-		expression, err := parsing.ParseLine(tokens)
-		if err != nil {
-			errors = append(errors, err)
-			continue
-		}
-		expressions = append(expressions, expression)
 	}
 
-	if err := lineReader.Err(); err != nil {
-		errors = append(errors, err)
+	tokens, lexErrs := parsing.Scan([]rune(buf.String() + "\n"))
+	if lexErrs != nil {
+		errors = append(errors, lexErrs...)
+	}
+
+	expressions, parseErrs := parsing.Parse(tokens)
+	if parseErrs != nil || len(parseErrs) > 0 {
+		errors = append(errors, parseErrs...)
 	}
 
 	if len(errors) > 0 {
-		return ini, errors
+		return nil, errors
 	}
 
 	initINIFromAST(&ini, expressions)
