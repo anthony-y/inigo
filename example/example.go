@@ -23,5 +23,12 @@ func main() {
 		return
 	}
 
-	ini.Write(os.Stdout)
+	ini["Graphics"]["lod_level"] = 5
+
+	writer, err := os.Create("example.ini")
+	if err != nil {
+		panic(err)
+	}
+	defer writer.Close()
+	ini.Write(writer)
 }

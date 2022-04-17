@@ -10,10 +10,33 @@ import (
 )
 
 type (
+	// You can access sections as if they're JavaScript/JSON objects
+	// e.g given this ini:
+	//  [Section]
+	//  value = 10
+	//
+	//  ini, _ := inigo.LoadIni(...)
+	//  ini["Section"]["value"] == 10
+	//
 	IniFile    map[string]IniSection  // name -> section
 	IniSection map[string]interface{} // name -> variable
 )
 
+// Using a bufio.Scanner, accumulate all lines in the input into the returned slice
+func readLines(raw io.Reader) []string {
+	lines := []string{}
+
+	scanner := bufio.NewScanner(raw)
+	scanner.Split(bufio.ScanLines)
+
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+
+	return lines
+}
+
+// Convert `stringValue` into an appropriate datatype, store it under `fieldName` inside section `ini`
 func parseAndStoreValue(ini IniSection, fieldName string, stringValue []rune) error {
 	first := stringValue[0]
 
@@ -53,6 +76,7 @@ func parseAndStoreValue(ini IniSection, fieldName string, stringValue []rune) er
 		return nil
 	}
 
+	// Ignore enclosing quotations for plain text values
 	if first == '"' || first == '\'' {
 		if stringValue[len(stringValue)-1] != '"' && stringValue[len(stringValue)-1] != '\'' {
 			return errors.New("unclosed string literal, did you forget a '\"'?")
@@ -64,19 +88,7 @@ func parseAndStoreValue(ini IniSection, fieldName string, stringValue []rune) er
 	return nil
 }
 
-func readLines(raw io.Reader) []string {
-	lines := []string{}
-
-	scanner := bufio.NewScanner(raw)
-	scanner.Split(bufio.ScanLines)
-
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-
-	return lines
-}
-
+// Given a correct declaration of a new section, initialize one
 func readSectionHeader(ini IniFile, line []rune) (string, error) {
 	cursor := 0
 	for line[cursor] != ']' && line[cursor] != rune(0) && line[cursor] != '\n' && cursor < len(line) {
@@ -94,6 +106,7 @@ func readSectionHeader(ini IniFile, line []rune) (string, error) {
 	return sectionName, nil
 }
 
+// Given a correct declaration of a field, initialize one with the given value
 func readVariable(ini IniFile, currentSection string, line []rune) error {
 	cursor := 0
 	for line[cursor] != '=' && line[cursor] != rune(0) && line[cursor] != '\n' && cursor < len(line) {
@@ -115,7 +128,8 @@ func readVariable(ini IniFile, currentSection string, line []rune) error {
 	return nil
 }
 
-func (this IniFile) Write(w io.Writer) {
+// Send formatted output of the entire ini state to an io.Writer
+func (this IniFile) WriteTo(w io.Writer) {
 	for sectionName, fields := range this {
 		w.Write([]byte(fmt.Sprintf("[%s]\n", sectionName)))
 		for fieldName, value := range fields {
@@ -142,6 +156,7 @@ func (this IniFile) Write(w io.Writer) {
 	}
 }
 
+// Load some ini data into memory
 func LoadIni(raw io.Reader) (IniFile, []error) {
 	var out IniFile = make(map[string]IniSection)
 	errors := []error{}
@@ -170,7 +185,7 @@ func LoadIni(raw io.Reader) (IniFile, []error) {
 
 	if len(errors) == 0 {
 		return out, nil
-	} else {
-		return nil, errors
 	}
+
+	return nil, errors
 }
