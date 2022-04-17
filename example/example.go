@@ -23,10 +23,5 @@ func main() {
 		return
 	}
 
-	for sectionName, fields := range ini {
-		fmt.Printf("[%s]\n", sectionName)
-		for fieldName, value := range fields {
-			fmt.Printf("%s=%s\n", fieldName, value)
-		}
-	}
+	ini.Write(os.Stdout)
 }
