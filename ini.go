@@ -1,17 +1,15 @@
 package inigo
 
 import (
-	"bytes"
+	"bufio"
+	"errors"
 	"fmt"
 	"io"
-	"os"
-
-	"github.com/anthony-y/inigo/parsing"
 )
 
 type (
-	File    map[string]Section
-	Section map[string]interface{}
+	IniFile    map[string]IniSection  // name -> section
+	IniSection map[string]interface{} // name -> variable
 
 	ReadError struct {
 		Name string
@@ -20,79 +18,85 @@ type (
 )
 
 func (re ReadError) Error() string {
-	return fmt.Sprintf("Failed to read %s: %s", re.Name, re.Err.Error())
+	return fmt.Sprintf("failed to read %s: %s", re.Name, re.Err.Error())
 }
 
-func (f File) Section(name string) Section {
-	return f[name]
-}
+func readLines(raw io.Reader) []string {
+	lines := []string{}
 
-func (s Section) Key(name string) interface{} {
-	return s[name]
-}
+	scanner := bufio.NewScanner(raw)
+	scanner.Split(bufio.ScanLines)
 
-func LoadIniFile(path string) (f File, e []error) {
-	handle, err := os.Open(path)
-	if err != nil {
-		return nil, []error{
-			err,
-		}
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
 	}
 
-	f, e = LoadIni(handle)
-	handle.Close()
-
-	return
+	return lines
 }
 
-func LoadIniFromBytes(b []byte) (File, []error) {
-	return LoadIni(bytes.NewReader(b))
+func readSectionHeader(ini IniFile, line []rune) (string, error) {
+	cursor := 0
+	for line[cursor] != ']' && line[cursor] != rune(0) && line[cursor] != '\n' && cursor < len(line) {
+		cursor++
+	}
+
+	sectionName := string(line[0:cursor])
+
+	if _, exists := ini[sectionName]; !exists {
+		ini[sectionName] = make(map[string]interface{})
+	} else {
+		return "", errors.New(fmt.Sprintf("section %s already exists", sectionName))
+	}
+
+	return sectionName, nil
 }
 
-func LoadIni(reader io.Reader) (File, []error) {
-	ini := File{}
+func readVariable(ini IniFile, currentSection string, line []rune) error {
+	cursor := 0
+	for line[cursor] != '=' && line[cursor] != rune(0) && line[cursor] != '\n' && cursor < len(line) {
+		cursor++
+	}
+	variableName := string(line[0:cursor])
+
+	if line[cursor] != '=' {
+		return errors.New("expected '='")
+	}
+
+	value := string(line[cursor+1:])
+	ini[currentSection][variableName] = value
+
+	return nil
+}
+
+func Ini(raw io.Reader) (IniFile, []error) {
+	var out IniFile = make(map[string]IniSection)
 	errors := []error{}
+	lines := readLines(raw)
+	currentSection := ""
 
-	buf := bytes.Buffer{}
-	_, err := buf.ReadFrom(reader)
+	for _, line := range lines {
+		var err error = nil
 
-	if err != nil {
-		return nil, []error{
-			ReadError{
-				Name: "io.Reader",
-				Err:  err,
-			},
+		if len(line) == 0 {
+			continue
+		}
+
+		if line[0] == '[' {
+			currentSection, err = readSectionHeader(out, []rune(line[1:]))
+		} else if line[0] == ';' || line[0] == '#' {
+			continue
+		} else {
+			err = readVariable(out, currentSection, []rune(line))
+		}
+
+		if err != nil {
+			errors = append(errors, err)
 		}
 	}
 
-	tokens, lexErrs := parsing.Scan([]rune(buf.String() + "\n"))
-	if lexErrs != nil {
-		errors = append(errors, lexErrs...)
-	}
-
-	expressions, parseErrs := parsing.Parse(tokens)
-	if parseErrs != nil || len(parseErrs) > 0 {
-		errors = append(errors, parseErrs...)
-	}
-
-	if len(errors) > 0 {
+	if len(errors) == 0 {
+		return out, nil
+	} else {
 		return nil, errors
-	}
-
-	initINIFromAST(&ini, expressions)
-
-	return ini, nil
-}
-
-func initINIFromAST(file *File, ast []parsing.Expression) {
-	for _, expression := range ast {
-		switch v := expression.(type) {
-		case parsing.AssignmentExpression:
-			if (*file)[v.Section] == nil {
-				(*file)[v.Section] = Section{}
-			}
-
-			(*file)[v.Section][v.Name] = v.Value()
-		}
 	}
 }

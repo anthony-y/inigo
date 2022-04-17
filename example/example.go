@@ -2,12 +2,20 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"os"
 
 	"github.com/anthony-y/inigo"
 )
 
 func main() {
-	ini, errs := inigo.LoadIniFile("example.ini")
+	handle, err := os.Open("example.ini")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer handle.Close()
+
+	ini, errs := inigo.Ini(handle)
 	if errs != nil {
 		for _, err := range errs {
 			fmt.Println(err)
@@ -15,17 +23,10 @@ func main() {
 		return
 	}
 
-	globals := ini[""]["globals"].(string)
-	fmt.Println(globals)
-
-	for _, line := range ini["lines"] {
-		fmt.Println(line.(string))
+	for sectionName, fields := range ini {
+		fmt.Printf("[%s]\n", sectionName)
+		for fieldName, value := range fields {
+			fmt.Printf("%s=%s\n", fieldName, value)
+		}
 	}
-
-	dataSection := ini["data"]
-	astring := dataSection["astring"].(string)
-	aint := dataSection["aint"].(int)
-	afloat := dataSection["afloat"].(float64)
-
-	fmt.Printf("astring=\"%s\"\naint=%d\nafloat=%f\n", astring, aint, afloat)
 }
