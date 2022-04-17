@@ -10,16 +10,7 @@ import (
 type (
 	IniFile    map[string]IniSection  // name -> section
 	IniSection map[string]interface{} // name -> variable
-
-	ReadError struct {
-		Name string
-		Err  error
-	}
 )
-
-func (re ReadError) Error() string {
-	return fmt.Sprintf("failed to read %s: %s", re.Name, re.Err.Error())
-}
 
 func readLines(raw io.Reader) []string {
 	lines := []string{}
@@ -68,7 +59,7 @@ func readVariable(ini IniFile, currentSection string, line []rune) error {
 	return nil
 }
 
-func ReadIni(raw io.Reader) (IniFile, []error) {
+func LoadIni(raw io.Reader) (IniFile, []error) {
 	var out IniFile = make(map[string]IniSection)
 	errors := []error{}
 	lines := readLines(raw)
