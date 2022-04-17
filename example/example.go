@@ -15,7 +15,7 @@ func main() {
 	}
 	defer handle.Close()
 
-	ini, errs := inigo.Ini(handle)
+	ini, errs := inigo.ReadIni(handle)
 	if errs != nil {
 		for _, err := range errs {
 			fmt.Println(err)

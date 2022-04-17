@@ -68,7 +68,7 @@ func readVariable(ini IniFile, currentSection string, line []rune) error {
 	return nil
 }
 
-func Ini(raw io.Reader) (IniFile, []error) {
+func ReadIni(raw io.Reader) (IniFile, []error) {
 	var out IniFile = make(map[string]IniSection)
 	errors := []error{}
 	lines := readLines(raw)
