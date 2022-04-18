@@ -30,5 +30,5 @@ func main() {
 		panic(err)
 	}
 	defer writer.Close()
-	ini.Write(writer)
+	ini.WriteTo(writer)
 }
