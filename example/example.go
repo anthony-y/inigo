@@ -31,8 +31,10 @@ func main() {
 	}
 	defer writer.Close()
 
-	_, err = ini.WriteTo(writer)
+	count, err := ini.WriteTo(writer)
 	if err != nil {
 		panic(err)
 	}
+
+	fmt.Println("Wrote", count, "bytes to", writer)
 }

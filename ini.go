@@ -22,21 +22,138 @@ type (
 	IniSection map[string]interface{} // name -> variable
 )
 
-// Using a bufio.Scanner, accumulate all lines in the input into the returned slice
-func readLines(raw io.Reader) []string {
-	lines := []string{}
+// Load some ini data into memory
+func LoadIni(raw io.Reader) (IniFile, []error) {
+	var out IniFile = make(map[string]IniSection)
+	errors := []error{}
+	lines := readLines(raw)
+	currentSection := ""
 
-	scanner := bufio.NewScanner(raw)
-	scanner.Split(bufio.ScanLines)
+	for _, line := range lines {
+		var err error = nil
 
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
+		if len(line) == 0 {
+			continue
+		}
+
+		if line[0] == '[' {
+			currentSection, err = readSectionHeader(out, []rune(line[1:]))
+		} else if line[0] == ';' || line[0] == '#' {
+			continue // skip comment lines
+		} else {
+			err = readVariable(out, currentSection, []rune(line))
+		}
+
+		if err != nil {
+			errors = append(errors, err)
+		}
 	}
 
-	return lines
+	if len(errors) == 0 {
+		return out, nil
+	}
+
+	return nil, errors
 }
 
-// Convert `stringValue` into an appropriate datatype, store it under `fieldName` inside section `ini`
+// Send formatted output of the entire ini state to an io.Writer
+func (this IniFile) WriteTo(w io.Writer) (totalBytes int64, err error) {
+	sectionsCount := 0
+
+	for sectionName, fields := range this {
+		sectionsNumBytes, err := w.Write([]byte(fmt.Sprintf("[%s]\n", sectionName)))
+		totalBytes += int64(sectionsNumBytes)
+		if err != nil {
+			return int64(sectionsNumBytes), err
+		}
+
+		for fieldName, value := range fields {
+			fieldsNumBytes, err := w.Write([]byte(fmt.Sprintf("%s=", fieldName)))
+			totalBytes += int64(fieldsNumBytes)
+			if err != nil {
+				return int64(totalBytes), err
+			}
+
+			valuesNumBytes := 0
+
+			switch value.(type) {
+			case int:
+				valuesNumBytes, err = w.Write([]byte(fmt.Sprintf("%d\n", value.(int))))
+			case int32:
+				valuesNumBytes, err = w.Write([]byte(fmt.Sprintf("%d\n", value.(int32))))
+			case int64:
+				valuesNumBytes, err = w.Write([]byte(fmt.Sprintf("%d\n", value.(int64))))
+			case string:
+				valuesNumBytes, err = w.Write([]byte(fmt.Sprintf("\"%s\"\n", value.(string))))
+			case float32:
+				valuesNumBytes, err = w.Write([]byte(fmt.Sprintf("%f\n", value.(float32))))
+			case float64:
+				valuesNumBytes, err = w.Write([]byte(fmt.Sprintf("%f\n", value.(float64))))
+			case bool:
+				valuesNumBytes, err = w.Write([]byte(fmt.Sprintf("%t\n", value.(bool))))
+			}
+
+			totalBytes += int64(valuesNumBytes)
+			if err != nil {
+				return int64(fieldsNumBytes + sectionsNumBytes + valuesNumBytes), err
+			}
+		}
+
+		if sectionsCount < len(this)-1 {
+			lineBreakNumBytes, err := w.Write([]byte{'\n'})
+			totalBytes += int64(lineBreakNumBytes)
+			if err != nil {
+				return totalBytes, err
+			}
+		}
+
+		sectionsCount++
+	}
+
+	return
+}
+
+// Given a correct declaration of a section, initializes one inside the given IniFile state
+func readSectionHeader(ini IniFile, line []rune) (string, error) {
+	cursor := 0
+	for line[cursor] != ']' && line[cursor] != rune(0) && line[cursor] != '\n' && cursor < len(line) {
+		cursor++
+	}
+
+	sectionName := string(line[0:cursor])
+
+	if _, exists := ini[sectionName]; !exists {
+		ini[sectionName] = make(map[string]interface{})
+	} else {
+		return "", errors.New(fmt.Sprintf("section %s already exists", sectionName))
+	}
+
+	return sectionName, nil
+}
+
+// Given a correct field declaration, initializes one with the given value
+func readVariable(ini IniFile, currentSection string, line []rune) error {
+	cursor := 0
+	for line[cursor] != '=' && line[cursor] != rune(0) && line[cursor] != '\n' && cursor < len(line) {
+		cursor++
+	}
+	variableName := string(line[0:cursor])
+
+	if line[cursor] != '=' {
+		return errors.New("expected '='")
+	}
+
+	value := string(line[cursor+1:])
+
+	err := parseAndStoreValue(ini[currentSection], variableName, []rune(value))
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Convert `stringValue` into an appropriate datatype, and store it under `fieldName` inside given section `ini`
 func parseAndStoreValue(ini IniSection, fieldName string, stringValue []rune) error {
 	first := stringValue[0]
 
@@ -76,7 +193,7 @@ func parseAndStoreValue(ini IniSection, fieldName string, stringValue []rune) er
 		return nil
 	}
 
-	// Ignore enclosing quotations for plain text values
+	// Ignore enclosing quotations for text values
 	if first == '"' || first == '\'' {
 		if stringValue[len(stringValue)-1] != '"' && stringValue[len(stringValue)-1] != '\'' {
 			return errors.New("unclosed string literal, did you forget a '\"'?")
@@ -88,124 +205,16 @@ func parseAndStoreValue(ini IniSection, fieldName string, stringValue []rune) er
 	return nil
 }
 
-// Given a correct declaration of a new section, initialize one
-func readSectionHeader(ini IniFile, line []rune) (string, error) {
-	cursor := 0
-	for line[cursor] != ']' && line[cursor] != rune(0) && line[cursor] != '\n' && cursor < len(line) {
-		cursor++
+// Using a bufio.Scanner, accumulate all lines in the input into the returned slice
+func readLines(raw io.Reader) []string {
+	lines := []string{}
+
+	scanner := bufio.NewScanner(raw)
+	scanner.Split(bufio.ScanLines)
+
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
 	}
 
-	sectionName := string(line[0:cursor])
-
-	if _, exists := ini[sectionName]; !exists {
-		ini[sectionName] = make(map[string]interface{})
-	} else {
-		return "", errors.New(fmt.Sprintf("section %s already exists", sectionName))
-	}
-
-	return sectionName, nil
-}
-
-// Given a correct declaration of a field, initialize one with the given value
-func readVariable(ini IniFile, currentSection string, line []rune) error {
-	cursor := 0
-	for line[cursor] != '=' && line[cursor] != rune(0) && line[cursor] != '\n' && cursor < len(line) {
-		cursor++
-	}
-	variableName := string(line[0:cursor])
-
-	if line[cursor] != '=' {
-		return errors.New("expected '='")
-	}
-
-	value := string(line[cursor+1:])
-
-	err := parseAndStoreValue(ini[currentSection], variableName, []rune(value))
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// Send formatted output of the entire ini state to an io.Writer
-func (this IniFile) WriteTo(w io.Writer) (int64, error) {
-	sectionWritten, fieldWritten, valueWritten, newlineWritten := 0, 0, 0, 0
-	var err error
-
-	for sectionName, fields := range this {
-		sectionWritten, err = w.Write([]byte(fmt.Sprintf("[%s]\n", sectionName)))
-		if err != nil {
-			return int64(sectionWritten), err
-		}
-
-		for fieldName, value := range fields {
-			fieldWritten, err = w.Write([]byte(fmt.Sprintf("%s=", fieldName)))
-			if err != nil {
-				return int64(fieldWritten + sectionWritten), err
-			}
-
-			switch value.(type) {
-			case int:
-				valueWritten, err = w.Write([]byte(fmt.Sprintf("%d\n", value.(int))))
-			case int32:
-				valueWritten, err = w.Write([]byte(fmt.Sprintf("%d\n", value.(int32))))
-			case int64:
-				valueWritten, err = w.Write([]byte(fmt.Sprintf("%d\n", value.(int64))))
-			case string:
-				valueWritten, err = w.Write([]byte(fmt.Sprintf("\"%s\"\n", value.(string))))
-			case float32:
-				valueWritten, err = w.Write([]byte(fmt.Sprintf("%f\n", value.(float32))))
-			case float64:
-				valueWritten, err = w.Write([]byte(fmt.Sprintf("%f\n", value.(float64))))
-			case bool:
-				valueWritten, err = w.Write([]byte(fmt.Sprintf("%t\n", value.(bool))))
-			}
-
-			if err != nil {
-				return int64(fieldWritten + sectionWritten + valueWritten), err
-			}
-		}
-
-		newlineWritten, err = w.Write([]byte{'\n'})
-		if err != nil {
-			return int64(fieldWritten + sectionWritten + valueWritten + newlineWritten), err
-		}
-	}
-
-	return int64(sectionWritten + fieldWritten + valueWritten + newlineWritten), err
-}
-
-// Load some ini data into memory
-func LoadIni(raw io.Reader) (IniFile, []error) {
-	var out IniFile = make(map[string]IniSection)
-	errors := []error{}
-	lines := readLines(raw)
-	currentSection := ""
-
-	for _, line := range lines {
-		var err error = nil
-
-		if len(line) == 0 {
-			continue
-		}
-
-		if line[0] == '[' {
-			currentSection, err = readSectionHeader(out, []rune(line[1:]))
-		} else if line[0] == ';' || line[0] == '#' {
-			continue // skip comment lines
-		} else {
-			err = readVariable(out, currentSection, []rune(line))
-		}
-
-		if err != nil {
-			errors = append(errors, err)
-		}
-	}
-
-	if len(errors) == 0 {
-		return out, nil
-	}
-
-	return nil, errors
+	return lines
 }
