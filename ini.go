@@ -206,15 +206,11 @@ func parseAndStoreValue(ini IniSection, fieldName string, stringValue []rune) er
 }
 
 // Using a bufio.Scanner, accumulate all lines in the input into the returned slice
-func readLines(raw io.Reader) []string {
-	lines := []string{}
-
+func readLines(raw io.Reader) (lines []string) {
 	scanner := bufio.NewScanner(raw)
 	scanner.Split(bufio.ScanLines)
-
 	for scanner.Scan() {
 		lines = append(lines, scanner.Text())
 	}
-
-	return lines
+	return
 }
