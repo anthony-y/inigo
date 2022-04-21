@@ -129,31 +129,51 @@ func readVariable(ini IniFile, currentSection string, line []rune) error {
 }
 
 // Send formatted output of the entire ini state to an io.Writer
-func (this IniFile) WriteTo(w io.Writer) {
+func (this IniFile) WriteTo(w io.Writer) (int64, error) {
+	sectionWritten, fieldWritten, valueWritten, newlineWritten := 0, 0, 0, 0
+	var err error
+
 	for sectionName, fields := range this {
-		w.Write([]byte(fmt.Sprintf("[%s]\n", sectionName)))
+		sectionWritten, err = w.Write([]byte(fmt.Sprintf("[%s]\n", sectionName)))
+		if err != nil {
+			return int64(sectionWritten), err
+		}
+
 		for fieldName, value := range fields {
-			w.Write([]byte(fmt.Sprintf("%s=", fieldName)))
+			fieldWritten, err = w.Write([]byte(fmt.Sprintf("%s=", fieldName)))
+			if err != nil {
+				return int64(fieldWritten + sectionWritten), err
+			}
 
 			switch value.(type) {
 			case int:
-				w.Write([]byte(fmt.Sprintf("%d\n", value.(int))))
+				valueWritten, err = w.Write([]byte(fmt.Sprintf("%d\n", value.(int))))
 			case int32:
-				w.Write([]byte(fmt.Sprintf("%d\n", value.(int32))))
+				valueWritten, err = w.Write([]byte(fmt.Sprintf("%d\n", value.(int32))))
 			case int64:
-				w.Write([]byte(fmt.Sprintf("%d\n", value.(int64))))
+				valueWritten, err = w.Write([]byte(fmt.Sprintf("%d\n", value.(int64))))
 			case string:
-				w.Write([]byte(fmt.Sprintf("\"%s\"\n", value.(string))))
+				valueWritten, err = w.Write([]byte(fmt.Sprintf("\"%s\"\n", value.(string))))
 			case float32:
-				w.Write([]byte(fmt.Sprintf("%f\n", value.(float32))))
+				valueWritten, err = w.Write([]byte(fmt.Sprintf("%f\n", value.(float32))))
 			case float64:
-				w.Write([]byte(fmt.Sprintf("%f\n", value.(float64))))
+				valueWritten, err = w.Write([]byte(fmt.Sprintf("%f\n", value.(float64))))
 			case bool:
-				w.Write([]byte(fmt.Sprintf("%t\n", value.(bool))))
+				valueWritten, err = w.Write([]byte(fmt.Sprintf("%t\n", value.(bool))))
+			}
+
+			if err != nil {
+				return int64(fieldWritten + sectionWritten + valueWritten), err
 			}
 		}
-		w.Write([]byte{'\n'})
+
+		newlineWritten, err = w.Write([]byte{'\n'})
+		if err != nil {
+			return int64(fieldWritten + sectionWritten + valueWritten + newlineWritten), err
+		}
 	}
+
+	return int64(sectionWritten + fieldWritten + valueWritten + newlineWritten), err
 }
 
 // Load some ini data into memory
